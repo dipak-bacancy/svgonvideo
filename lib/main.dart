@@ -5,12 +5,15 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_ffmpeg/flutter_ffmpeg.dart';
 import 'package:svgonvideo/video.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:matrix_gesture_detector/matrix_gesture_detector.dart';
 import 'dart:ui' as ui;
 import 'package:path_provider/path_provider.dart';
+
+import 'dart:math';
 
 void main() {
   runApp(MyApp());
@@ -37,36 +40,28 @@ class TransformDemo extends StatefulWidget {
 class _TransformDemoState extends State<TransformDemo> {
   GlobalKey _globalKey = new GlobalKey();
 
-  Future<String> _capturePng() async {
-    try {
-      print('inside');
-      RenderRepaintBoundary boundary =
-          _globalKey.currentContext.findRenderObject();
-      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      ByteData byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      final buffer = byteData.buffer;
+  double _angel = 0.0;
 
-      final filename = '${DateTime.now().millisecondsSinceEpoch}_svg.png';
+  Offset _offset = Offset(0, 0);
 
-      Directory dir = await getExternalStorageDirectory();
+  double _xScale = 0;
+  double _yScale = 0;
 
-      print(dir.path + '/' + filename);
+  _loadSvgFromAsset() async {
+    final filename = 'panda.svg';
+    final bytes = await rootBundle.load("assets/panda.svg");
+    final String dir = (await getApplicationDocumentsDirectory()).path;
+    final path = '$dir/$filename';
+    final buffer = bytes.buffer;
 
-      final path = dir.path + "/" + filename;
+    print(path);
 
-      await new File(path)
-          .writeAsBytes(buffer.asUint8List(
-              byteData.offsetInBytes, byteData.lengthInBytes))
-          .then((value) => print('written'));
+    await File(path).writeAsBytes(
+        buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
+    File file = File('$dir/$filename');
+    print('Loaded file ${file.path}');
 
-      File file = File(path);
-      print('Loaded file ${file.path}');
-
-      return file.path;
-    } catch (e) {
-      print(e);
-    }
+    return file.path;
   }
 
   Future<String> merge() async {
@@ -77,27 +72,26 @@ class _TransformDemoState extends State<TransformDemo> {
 
     String videoPath = result?.files.single.path;
 
-    String imagepath = await _capturePng();
-
     final filename = '${DateTime.now().millisecondsSinceEpoch}_output.mp4';
 
     Directory dir = await getExternalStorageDirectory();
 
+    final imgpath = await _loadSvgFromAsset();
+
     // print(dir.path + '/' + filename);
     final outputPath = dir.path + "/" + filename;
 
-    // File file = File(result?.files.single.path);
+    // String imgOverlayCommand =
+    //     '-i $videoPath -i imagepath -filter_complex "[0:v][1:v] overlay=-300:-300" $outputPath';
 
-    // Directory dir = await getExternalStorageDirectory();
+    String cmd =
+        '''-i $videoPath -i $imgpath -filter_complex "[1:v] rotate=$_angel:c=none:ow=rotw(iw):oh=roth(ih) [rotate];[0:v][rotate] overlay=${_offset.dx}:${_offset.dx}" -codec:a copy $outputPath''';
 
-    String imgOverlayCommand =
-        '-i $videoPath -i $imagepath -filter_complex "[0:v][1:v] overlay=-300:-300" $outputPath';
-
-    print('------------- $imgOverlayCommand');
+    print('------------- $cmd');
 
     FlutterFFmpeg _flutterFFmpeg = new FlutterFFmpeg();
 
-    await _flutterFFmpeg.execute(imgOverlayCommand).then((value) {
+    await _flutterFFmpeg.execute(cmd).then((value) {
       print(" x $value} outputPath1 $outputPath");
     }).catchError((e) {
       print("error in 1 is $e");
@@ -113,26 +107,38 @@ class _TransformDemoState extends State<TransformDemo> {
       body: MatrixGestureDetector(
         onMatrixUpdate: (m, tm, sm, rm) {
           notifier.value = m;
+
+          final rotation = m.getRotation();
+          final rad = asin(rotation[1]);
+          // final angel = degree < 0 ? (360 + degree) : degree;
+
+          final traslation = m.getTranslation();
+
+          // setting parameters
+          _xScale = m.getRow(0)[0];
+          _yScale = m.getRow(0)[0];
+          _angel = rad;
+          _offset = Offset(traslation[0], traslation[1]);
         },
-        child: RepaintBoundary(
-          key: _globalKey,
-          child: AnimatedBuilder(
-            animation: notifier,
-            builder: (ctx, child) {
-              return Transform(
-                transform: notifier.value,
-                child: Stack(
-                  children: <Widget>[
-                    Container(),
-                    SvgPicture.asset(
-                      'assets/panda.svg',
-                      semanticsLabel: 'Acme Logo',
-                    )
-                  ],
-                ),
-              );
-            },
-          ),
+        child: AnimatedBuilder(
+          animation: notifier,
+          builder: (ctx, child) {
+            return Transform(
+              transform: notifier.value,
+              child: Stack(
+                children: <Widget>[
+                  Container(),
+                  SvgPicture.asset(
+                    'assets/panda.svg',
+                    semanticsLabel: 'Acme Logo',
+                    height: 200,
+                    // height: 100,
+                    // width: 100,
+                  )
+                ],
+              ),
+            );
+          },
         ),
       ),
       floatingActionButton: FloatingActionButton(
