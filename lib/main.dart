@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_ffmpeg/flutter_ffmpeg.dart';
 import 'package:svgonvideo/video.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:matrix_gesture_detector/matrix_gesture_detector.dart';
@@ -67,6 +69,43 @@ class _TransformDemoState extends State<TransformDemo> {
     }
   }
 
+  Future<String> merge() async {
+    FilePickerResult result =
+        await FilePicker.platform.pickFiles(type: FileType.video);
+
+    print(result?.files.single.path);
+
+    String videoPath = result?.files.single.path;
+
+    String imagepath = await _capturePng();
+
+    final filename = '${DateTime.now().millisecondsSinceEpoch}_output.mp4';
+
+    Directory dir = await getExternalStorageDirectory();
+
+    // print(dir.path + '/' + filename);
+    final outputPath = dir.path + "/" + filename;
+
+    // File file = File(result?.files.single.path);
+
+    // Directory dir = await getExternalStorageDirectory();
+
+    String imgOverlayCommand =
+        '-i $videoPath -i $imagepath -filter_complex "[0:v][1:v] overlay=-300:-300" $outputPath';
+
+    print('------------- $imgOverlayCommand');
+
+    FlutterFFmpeg _flutterFFmpeg = new FlutterFFmpeg();
+
+    await _flutterFFmpeg.execute(imgOverlayCommand).then((value) {
+      print(" x $value} outputPath1 $outputPath");
+    }).catchError((e) {
+      print("error in 1 is $e");
+    });
+
+    return outputPath;
+  }
+
   @override
   Widget build(BuildContext context) {
     final ValueNotifier<Matrix4> notifier = ValueNotifier(Matrix4.identity());
@@ -85,8 +124,10 @@ class _TransformDemoState extends State<TransformDemo> {
                 child: Stack(
                   children: <Widget>[
                     Container(),
-                    SvgPicture.asset('assets/panda.svg',
-                        semanticsLabel: 'Acme Logo')
+                    SvgPicture.asset(
+                      'assets/panda.svg',
+                      semanticsLabel: 'Acme Logo',
+                    )
                   ],
                 ),
               );
@@ -96,7 +137,15 @@ class _TransformDemoState extends State<TransformDemo> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final res = await _capturePng();
+          // final res = await _capturePng();
+          final outpath = await merge();
+
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => VideoApp(
+                        outpath,
+                      )));
         },
         child: Icon(Icons.add),
       ),
