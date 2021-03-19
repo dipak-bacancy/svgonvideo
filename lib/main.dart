@@ -40,6 +40,8 @@ class TransformDemo extends StatefulWidget {
 class _TransformDemoState extends State<TransformDemo> {
   GlobalKey _globalKey = new GlobalKey();
 
+  final _stickerkey = new GlobalKey();
+
   double _angel = 0.0;
 
   Offset _offset = Offset(0, 0);
@@ -48,8 +50,8 @@ class _TransformDemoState extends State<TransformDemo> {
   double _yScale = 0;
 
   _loadSvgFromAsset() async {
-    final filename = 'panda.svg';
-    final bytes = await rootBundle.load("assets/panda.svg");
+    final filename = 'panda.png';
+    final bytes = await rootBundle.load("assets/panda.png");
     final String dir = (await getApplicationDocumentsDirectory()).path;
     final path = '$dir/$filename';
     final buffer = bytes.buffer;
@@ -84,14 +86,17 @@ class _TransformDemoState extends State<TransformDemo> {
     // String imgOverlayCommand =
     //     '-i $videoPath -i imagepath -filter_complex "[0:v][1:v] overlay=-300:-300" $outputPath';
 
-    String cmd =
-        '''-i $videoPath -i $imgpath -filter_complex "[1:v] rotate=$_angel:c=none:ow=rotw(iw):oh=roth(ih) [rotate];[0:v][rotate] overlay=${_offset.dx}:${_offset.dx}" -codec:a copy $outputPath''';
+    // String cmd =
+    //     '''-i $videoPath -i $imgpath -filter_complex "[1:v] rotate=$_angel:c=none:ow=rotw(iw):oh=roth(ih) [rotate];[0:v][rotate] overlay=${_offset.dx}:${_offset.dx}" -codec:a copy $outputPath''';
 
-    print('------------- $cmd');
+    final localCommand =
+        "-i '$videoPath' -i '$imgpath' -filter_complex '[1:v]format=bgra,rotate=$_angel:c=none:ow=rotw($_angel):oh=roth($_angel)[rotate];[rotate]scale=150:150[scale];[0:v][scale] overlay=${_offset.dx}:${_offset.dy}' -q:v 0 -q:a 0 -r 60 '$outputPath'";
+
+    print('------------- $localCommand');
 
     FlutterFFmpeg _flutterFFmpeg = new FlutterFFmpeg();
 
-    await _flutterFFmpeg.execute(cmd).then((value) {
+    await _flutterFFmpeg.execute(localCommand).then((value) {
       print(" x $value} outputPath1 $outputPath");
     }).catchError((e) {
       print("error in 1 is $e");
@@ -105,20 +110,27 @@ class _TransformDemoState extends State<TransformDemo> {
     final ValueNotifier<Matrix4> notifier = ValueNotifier(Matrix4.identity());
     return Scaffold(
       body: MatrixGestureDetector(
+        focalPointAlignment: Alignment.center,
         onMatrixUpdate: (m, tm, sm, rm) {
           notifier.value = m;
 
           final rotation = m.getRotation();
-          final rad = asin(rotation[1]);
-          // final angel = degree < 0 ? (360 + degree) : degree;
-
-          final traslation = m.getTranslation();
+          final degree = asin(rotation[1]) * pi / 180;
+          final angel = degree < 0 ? (360 + degree) : degree;
 
           // setting parameters
           _xScale = m.getRow(0)[0];
           _yScale = m.getRow(0)[0];
-          _angel = rad;
-          _offset = Offset(traslation[0], traslation[1]);
+          _angel = degree * 180 / pi;
+          // _offset = Offset(traslation[0], traslation[1]);
+
+          final RenderBox box = _stickerkey.currentContext.findRenderObject();
+
+          _offset = box.localToGlobal(Offset.zero);
+          // print(box.size);
+          // print('--------------------');
+          // print(rm);
+          print(_angel);
         },
         child: AnimatedBuilder(
           animation: notifier,
@@ -132,8 +144,7 @@ class _TransformDemoState extends State<TransformDemo> {
                     'assets/panda.svg',
                     semanticsLabel: 'Acme Logo',
                     height: 200,
-                    // height: 100,
-                    // width: 100,
+                    key: _stickerkey,
                   )
                 ],
               ),
